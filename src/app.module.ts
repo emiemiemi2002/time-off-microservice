@@ -1,8 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
-//import { TimeOffModule } from './modules/time-off/time-off.module';
-//import { LedgerModule } from './modules/ledger/ledger.module';
-//import { HcmGatewayModule } from './modules/hcm-gateway/hcm-gateway.module';
+import { TimeOffModule } from './modules/time-off/time-off.module';
+import { LedgerModule } from './modules/ledger/ledger.module';
+import { HcmGatewayModule } from './modules/hcm-gateway/hcm-gateway.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -21,9 +21,9 @@ const typeOrmOptions: TypeOrmModuleOptions = {
 @Module({
   imports: [
     typeOrmModule.forRoot(typeOrmOptions),
-    //TimeOffModule,
-    //LedgerModule,
-    //HcmGatewayModule,
+    TimeOffModule,
+    LedgerModule,
+    HcmGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],
