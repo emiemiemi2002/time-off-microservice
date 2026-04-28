@@ -14,7 +14,7 @@ const typeOrmOptions: TypeOrmModuleOptions = {
   type: 'sqlite',
   database: 'database.sqlite',
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
-  synchronize: true, // Únicamente para desarrollo/evaluación rápida
+  synchronize: true, // Only for quick development; use migrations in production
   logging: false,
 };
 
