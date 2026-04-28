@@ -2,12 +2,16 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TimeOffRequest } from './entities/time-off-request.entity';
 import { LedgerModule } from '../ledger/ledger.module';
+import { TimeOffController } from './controllers/time-off.controller';
+import { TimeOffService } from './services/time-off.service';
 
 @Module({
-  // We import TypeOrmModule to register the entity in this scope,
-  // and LedgerModule to use the LedgerService for balance validation.
+  // TypeOrmModule.forFeature registers the entity repository in this module's scope.
+  // LedgerModule is imported so TimeOffService can use LedgerService to validate balances.
   imports: [TypeOrmModule.forFeature([TimeOffRequest]), LedgerModule],
-  controllers: [],
-  providers: [],
+  // Controllers handle incoming requests and map them to the appropriate services.
+  controllers: [TimeOffController],
+  // Providers contain the core business logic (Services, Repositories, Factories, etc.)
+  providers: [TimeOffService],
 })
 export class TimeOffModule {}
