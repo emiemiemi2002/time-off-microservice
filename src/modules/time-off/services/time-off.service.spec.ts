@@ -7,10 +7,7 @@ import { DataSource } from 'typeorm';
 import { TimeOffService } from './time-off.service';
 import { LedgerService } from '../../ledger/services/ledger.service';
 import { HcmGatewayService } from '../../hcm-gateway/services/hcm-gateway.service';
-import {
-  TimeOffRequest,
-  TimeOffStatus,
-} from '../entities/time-off-request.entity';
+import { TimeOffStatus } from '../entities/time-off-request.entity';
 import { CreateTimeOffDto } from '../dto/create-time-off.dto';
 
 describe('TimeOffService', () => {
@@ -81,11 +78,15 @@ describe('TimeOffService', () => {
       // Given: Employee has enough balance (5 available, wants 2)
       mockLedgerService.getAvailableBalance.mockResolvedValueOnce(5);
 
-      // Strongly typed mock for the save method to avoid 'any' linting errors
-      mockQueryRunner.manager.save.mockImplementation(
-        (entity: Partial<TimeOffRequest>) =>
-          Promise.resolve({ id: 'req-uuid', ...entity } as TimeOffRequest),
-      );
+      // Strongly typed mock for the save method.
+      // We explicitly resolve a full object to ensure the 'id' is present for the async sync call.
+      mockQueryRunner.manager.save.mockResolvedValueOnce({
+        id: 'req-uuid',
+        employeeId: validDto.employeeId,
+        locationId: validDto.locationId,
+        amount: validDto.amount,
+        status: TimeOffStatus.APPROVED_LOCALLY,
+      });
 
       // When
       const result = await service.createRequest(validDto);
