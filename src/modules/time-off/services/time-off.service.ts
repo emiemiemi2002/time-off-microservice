@@ -11,6 +11,7 @@ import {
 } from '../entities/time-off-request.entity';
 import { LedgerService } from '../../ledger/services/ledger.service';
 import { CreateTimeOffDto } from '../dto/create-time-off.dto';
+import { HcmGatewayService } from '../../hcm-gateway/services/hcm-gateway.service';
 
 @Injectable()
 export class TimeOffService {
@@ -19,6 +20,7 @@ export class TimeOffService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly ledgerService: LedgerService,
+    private readonly hcmGatewayService: HcmGatewayService, // <-- Dependency Injection
   ) {}
 
   /**
@@ -71,17 +73,23 @@ export class TimeOffService {
       // is part of the transaction block.
       const savedRequest = await queryRunner.manager.save(request);
 
-      // 3. Commit the transaction
+      // 3. Commit the transaction locally first!
       await queryRunner.commitTransaction();
 
       this.logger.log(
         `Successfully created time-off request [${savedRequest.id}] for employee [${dto.employeeId}]`,
       );
 
-      // Architectural Note: At this point, we would typically emit an event
-      // (e.g., using an Event Bus or a Message Queue like RabbitMQ) to trigger
-      // the HCM synchronization asynchronously without blocking the HTTP response.
-      // We will implement that delegation later in the HcmGateway integration.
+      // 4. Background HCM Synchronization (Fire-and-Forget)
+      // We do NOT use 'await' here. This allows the HTTP response to be sent back
+      // to the user instantly (201 Created), while the sync happens in the background.
+      // We attach a .catch() to prevent Unhandled Promise Rejections from crashing Node.js.
+      this.hcmGatewayService.processSync(savedRequest.id).catch((error) => {
+        this.logger.error(
+          `Background HCM sync execution failed for request ${savedRequest.id}`,
+          error instanceof Error ? error.stack : 'Unknown error',
+        );
+      });
 
       return savedRequest;
     } catch (error) {
