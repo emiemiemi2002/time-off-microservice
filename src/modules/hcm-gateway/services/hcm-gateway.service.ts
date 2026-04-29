@@ -63,7 +63,7 @@ export class HcmGatewayService {
 
     try {
       if (hcmResponse.success) {
-        // Success Path: Mark request as COMPLETED and record the CONSUMPTION in the Ledger
+        // Success Path
         await queryRunner.manager.update(TimeOffRequest, requestId, {
           status: TimeOffStatus.COMPLETED,
         });
@@ -72,37 +72,31 @@ export class HcmGatewayService {
         ledgerEntry.employeeId = request.employeeId;
         ledgerEntry.locationId = request.locationId;
         ledgerEntry.type = LedgerTransactionType.CONSUMPTION;
-        // Ensure deduction is negative
         ledgerEntry.amount = -Math.abs(request.amount);
         ledgerEntry.referenceId = request.id;
 
         await queryRunner.manager.save(ledgerEntry);
-
         this.logger.log(
           `Request ${requestId} successfully synced and Ledger updated.`,
         );
-      } else if (hcmResponse.reason === 'REJECTED') {
-        // Explicit Rejection Path: Mark as REJECTED.
-        // No Ledger entry is made. The funds are automatically "released"
-        // because our LedgerService ignores REJECTED statuses in pending calculations.
-        await queryRunner.manager.update(TimeOffRequest, requestId, {
-          status: TimeOffStatus.REJECTED,
-        });
-
-        this.logger.log(
-          `Request ${requestId} explicitly rejected by HCM. Funds released.`,
-        );
       } else {
-        // Timeout/Error Path (The "Dual-Brain" mitigation):
-        // Mark as FAILED_HCM. Funds remain locked in the pending calculation
-        // until an administrator manually reconciles the state, preventing double-spending.
-        await queryRunner.manager.update(TimeOffRequest, requestId, {
-          status: TimeOffStatus.FAILED_HCM,
-        });
-
-        this.logger.warn(
-          `Request ${requestId} failed to sync due to network issue. Manual reconciliation required.`,
-        );
+        // Al entrar a este 'else', TypeScript garantiza al 100% que 'success' es false
+        // y por lo tanto la propiedad 'reason' existe de forma segura.
+        if (hcmResponse.reason === 'REJECTED') {
+          await queryRunner.manager.update(TimeOffRequest, requestId, {
+            status: TimeOffStatus.REJECTED,
+          });
+          this.logger.log(
+            `Request ${requestId} explicitly rejected by HCM. Funds released.`,
+          );
+        } else {
+          await queryRunner.manager.update(TimeOffRequest, requestId, {
+            status: TimeOffStatus.FAILED_HCM,
+          });
+          this.logger.warn(
+            `Request ${requestId} failed to sync due to network issue. Manual reconciliation required.`,
+          );
+        }
       }
 
       await queryRunner.commitTransaction();
