@@ -1,3 +1,6 @@
+import { In } from 'typeorm';
+import { LedgerService } from '../../ledger/services/ledger.service';
+import { BatchSyncDto } from '../dto/batch-sync.dto';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { HcmMockClient } from '../mocks/hcm-mock.client';
@@ -17,6 +20,7 @@ export class HcmGatewayService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly hcmClient: HcmMockClient,
+    private readonly ledgerService: LedgerService,
   ) {}
 
   /**
@@ -112,5 +116,94 @@ export class HcmGatewayService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Processes a batch payload from the HCM, reconciling local ledger state
+   * with the external Source of Truth.
+   * * @param dto - The batch of employee balances
+   * @returns A summary of the actions taken
+   */
+  async processBatchSync(dto: BatchSyncDto): Promise<{
+    processed: number;
+    adjustments: number;
+    cancellations: number;
+  }> {
+    let adjustments = 0;
+    let cancellations = 0;
+    const requestRepo = this.dataSource.getRepository(TimeOffRequest);
+
+    for (const record of dto.balances) {
+      // 1. Get our local absolute truth
+      const localAbsoluteBalance = await this.ledgerService.getAbsoluteBalance(
+        record.employeeId,
+        record.locationId,
+      );
+
+      // 2. Calculate the difference
+      const diff = record.balance - localAbsoluteBalance;
+
+      if (diff !== 0) {
+        // The HCM balance changed independently (e.g., work anniversary or HR manual edit).
+        // We inject an adjustment transaction into the ledger to forcefully align the sums.
+        await this.ledgerService.recordTransaction(
+          record.employeeId,
+          record.locationId,
+          LedgerTransactionType.HCM_ADJUSTMENT,
+          diff,
+          'BATCH-SYNC-WEBHOOK',
+        );
+        adjustments++;
+        this.logger.log(
+          `Adjusted ledger for Emp: ${record.employeeId} by ${diff} days.`,
+        );
+
+        // 3. Prevent Negative Overdrafts (Self-Healing)
+        // If the balance was externally REDUCED, we must check if the employee
+        // now has negative available balance due to in-flight requests.
+        let newAvailableBalance = await this.ledgerService.getAvailableBalance(
+          record.employeeId,
+          record.locationId,
+        );
+
+        if (newAvailableBalance < 0) {
+          this.logger.warn(
+            `Emp ${record.employeeId} is over-drafted by ${newAvailableBalance}. Reconciling pending requests...`,
+          );
+
+          // Fetch all locked requests, ordered by newest first
+          const pendingRequests = await requestRepo.find({
+            where: {
+              employeeId: record.employeeId,
+              locationId: record.locationId,
+              status: In([
+                TimeOffStatus.PENDING,
+                TimeOffStatus.APPROVED_LOCALLY,
+                TimeOffStatus.SYNCING,
+                TimeOffStatus.FAILED_HCM,
+              ]),
+            },
+            order: { createdAt: 'DESC' }, // Cancel the most recently submitted requests first
+          });
+
+          // Cancel requests one by one until the available balance is no longer negative
+          for (const req of pendingRequests) {
+            if (newAvailableBalance >= 0) break; // Balance restored, stop canceling
+
+            await requestRepo.update(req.id, {
+              status: TimeOffStatus.REJECTED,
+            });
+            cancellations++;
+            newAvailableBalance += req.amount; // Recover the soft-locked funds
+
+            this.logger.warn(
+              `SYSTEM CANCELLED request [${req.id}] due to insufficient HCM balance.`,
+            );
+          }
+        }
+      }
+    }
+
+    return { processed: dto.balances.length, adjustments, cancellations };
   }
 }

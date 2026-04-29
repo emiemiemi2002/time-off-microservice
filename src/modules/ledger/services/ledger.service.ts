@@ -86,6 +86,29 @@ export class LedgerService {
   }
 
   /**
+   * Calculates the absolute base balance from the ledger history,
+   * IGNORING any pending/in-flight requests.
+   * This is used strictly for reconciling with the HCM's Source of Truth.
+   */
+  async getAbsoluteBalance(
+    employeeId: string,
+    locationId: string,
+  ): Promise<number> {
+    interface LedgerSumResult {
+      totalBalance: string | null;
+    }
+
+    const ledgerQuery = await this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .select('SUM(ledger.amount)', 'totalBalance')
+      .where('ledger.employeeId = :employeeId', { employeeId })
+      .andWhere('ledger.locationId = :locationId', { locationId })
+      .getRawOne<LedgerSumResult>();
+
+    return parseFloat(ledgerQuery?.totalBalance ?? '0');
+  }
+
+  /**
    * Records a new transaction in the immutable ledger.
    * * @param employeeId - The ID of the employee
    * @param locationId - The location dimension
