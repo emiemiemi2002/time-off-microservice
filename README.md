@@ -13,6 +13,10 @@ This project addresses the notoriously difficult "Dual-Brain Problem" in distrib
 * **Fire-and-Forget Sync:** External API calls are handled asynchronously so the user gets an instant 201 Created response without waiting for network latency. 
 * **Self-Healing Batch Reconciliation:** The webhook endpoint can process massive payload updates from the HCM, automatically creating compensating adjustments and cancelling pending requests if an external deduction causes a local overdraft. 
 
+## Technical Documentation & Test Coverage
+
+🔗: https://drive.google.com/drive/folders/163BDr5NNVO18X-V3kbDKsSm_Hn4dc32i?usp=sharing
+
 ## Prerequisites
 
 * Node.js (v18.x or higher recommended)
